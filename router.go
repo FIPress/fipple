@@ -6,32 +6,32 @@ import (
 )
 
 var (
-	paramEx = regexp.MustCompile(`[^/]+`)  //match a single param part, start with ':', e.g. /user/:id
-	splatEx = regexp.MustCompile(`.+`)		//a part match the rest of the url, start with '*', e.g. /user/*name
+	paramEx = regexp.MustCompile(`[^/]+`) //match a single param part, start with ':', e.g. /user/:id
+	splatEx = regexp.MustCompile(`.+`)    //a part match the rest of the url, start with '*', e.g. /user/*name
 	//dynamic part(s) match the provided regular express, start with '$', e.g. /user/$id<[0-9]+>
 	customEx = regexp.MustCompile(`\$(.+)<(.+)>`) //custom regexp extractor,
 )
+
 //Url pattern indicate the parse type of a part of url
 type routePartPattern uint
 
 const (
-	static	routePartPattern = iota	//a single dynamic part, start with ':', it's pattern is [^/]+, e.g.  /user/:id
+	static routePartPattern = iota //a single dynamic part, start with ':', it's pattern is [^/]+, e.g.  /user/:id
 	param
-	splat						//a dynamic part match the rest of the url, start with '*', it's patter is .+, e.g. /user/*name
-	custom						//dynamic part(s) match the provided regular express, start with '$', e.g. /user/$id<[0-9]+>
-	discard						//discard this part, represented by '*', e.g. /user/*/:id, discard the second par
+	splat   //a dynamic part match the rest of the url, start with '*', it's patter is .+, e.g. /user/*name
+	custom  //dynamic part(s) match the provided regular express, start with '$', e.g. /user/$id<[0-9]+>
+	discard //discard this part, represented by '*', e.g. /user/*/:id, discard the second par
 	//todo: optional
 )
-
 
 type routeAction struct {
 	//encode Encode
 	httpMethod HttpMethod
-	action Action
+	action     Action
 }
 
 func newAction(route *Route) *routeAction {
-	return &routeAction{route.httpMethod,route.action}
+	return &routeAction{route.httpMethod, route.action}
 }
 
 type routePart interface {
@@ -51,7 +51,7 @@ type dynamicPart struct {
 
 type staticPart struct {
 	action *routeAction
-	sub	*parsedRoutes
+	sub    *parsedRoutes
 }
 
 func (sp *staticPart) isNil() bool {
@@ -65,7 +65,9 @@ func (sp *staticPart) setAction(a *routeAction) {
 }
 
 func (sp *staticPart) getOrNewSub() *parsedRoutes {
-	if sp == nil { return nil}
+	if sp == nil {
+		return nil
+	}
 
 	if sp.sub == nil {
 		sp.sub = newParsedRoutes()
@@ -74,12 +76,16 @@ func (sp *staticPart) getOrNewSub() *parsedRoutes {
 }
 
 func (sp *staticPart) getAction() *routeAction {
-	if sp == nil { return nil}
+	if sp == nil {
+		return nil
+	}
 	return sp.action
 }
 
 func (sp *staticPart) getSub() *parsedRoutes {
-	if sp == nil { return nil}
+	if sp == nil {
+		return nil
+	}
 
 	return sp.sub
 }
@@ -100,12 +106,12 @@ func newPart(key string) *routePart {
 }*/
 
 type parsedRoutes struct {
-	staticDict map[string]*staticPart
+	staticDict  map[string]*staticPart
 	dynamicDict map[routePartPattern]*dynamicPart
 }
 
 func newParsedRoutes() *parsedRoutes {
-	return &parsedRoutes{make(map[string]*staticPart),make(map[routePartPattern]*dynamicPart)}
+	return &parsedRoutes{make(map[string]*staticPart), make(map[routePartPattern]*dynamicPart)}
 }
 
 func (pr *parsedRoutes) getPart(key string) routePart {
@@ -113,15 +119,15 @@ func (pr *parsedRoutes) getPart(key string) routePart {
 	if pattern == static {
 		part := pr.staticDict[key]
 		if part == nil {
-			part = &staticPart{nil,nil}
+			part = &staticPart{nil, nil}
 			pr.staticDict[key] = part
 		}
 		return part
 	} else {
 		part := pr.dynamicDict[pattern]
 		if part == nil {
-			s := &staticPart{nil,nil}
-			part = &dynamicPart{s,para,regex}
+			s := &staticPart{nil, nil}
+			part = &dynamicPart{s, para, regex}
 			pr.dynamicDict[pattern] = part
 		}
 		return part
@@ -129,14 +135,18 @@ func (pr *parsedRoutes) getPart(key string) routePart {
 }
 
 func (pr *parsedRoutes) add(route *Route) {
-	if pr == nil {return}
-	parse(route.path,newAction(route),pr)
+	if pr == nil {
+		return
+	}
+	parse(route.path, newAction(route), pr)
 }
 
 func (pr *parsedRoutes) addAll(routeList []*Route) {
-	if pr == nil {return}
+	if pr == nil {
+		return
+	}
 	for _, route := range routeList {
-		parse(route.path,newAction(route),pr)
+		parse(route.path, newAction(route), pr)
 	}
 }
 
@@ -144,13 +154,13 @@ func parseAll(routeList []*Route) *parsedRoutes {
 	parsed := newParsedRoutes()
 	for _, route := range routeList {
 		action := newAction(route)
-		parse(route.path,action,parsed)
+		parse(route.path, action, parsed)
 	}
 	return parsed
 }
 
-func parse(path string,action *routeAction, parsed *parsedRoutes) {
-	key,rest := splitPart(path)
+func parse(path string, action *routeAction, parsed *parsedRoutes) {
+	key, rest := splitPart(path)
 	part := parsed.getPart(key)
 	if len(rest) == 0 {
 		//log.Println("before set action,parsed.static:",parsed.staticDict,"parsed.dynamic",parsed.dynamicDict)
@@ -159,19 +169,19 @@ func parse(path string,action *routeAction, parsed *parsedRoutes) {
 		//log.Println("after set action,parsed.static:",parsed.staticDict,"parsed.dynamic",parsed.dynamicDict)
 	} else {
 		sub := part.getOrNewSub()
-		parse(rest,action,sub)
+		parse(rest, action, sub)
 		//log.Println("len of sub static:",len(sub.staticDict),"len of sub dynamic",len(sub.dynamicDict))
 	}
 }
 
-func (pr *parsedRoutes) dispatch(url string,ctx *Context){
+func (pr *parsedRoutes) dispatch(url string, ctx *Context) {
 	//log.Println("dispatch...")
 	var part routePart
 	key, rest := splitPart(url)
 	part = pr.staticDict[key]
 	//log.Println("dispatch, key:",key,",rest:",rest,",part:",part)
 	if part.isNil() {
-		for typ,d := range pr.dynamicDict {
+		for typ, d := range pr.dynamicDict {
 			switch typ {
 			case param:
 				//log.Println("param part:",d.para,",val:",key)
@@ -202,7 +212,7 @@ func (pr *parsedRoutes) dispatch(url string,ctx *Context){
 		//log.Println("get action:",ra)
 		if ra != nil {
 			if getMethod(ctx.req.Method) != ra.httpMethod {
-				log.Println("req.Method:",ctx.req.Method,",ra.httpMethod:",ra.httpMethod,",ra:",ra)
+				log.Println("req.Method:", ctx.req.Method, ",ra.httpMethod:", ra.httpMethod, ",ra:", ra)
 				ctx.MethodNotAllowed()
 			} else {
 				//log.Println("execute action:")
@@ -213,10 +223,11 @@ func (pr *parsedRoutes) dispatch(url string,ctx *Context){
 			ctx.PageNotFound()
 		}
 	} else {
-		part.getSub().dispatch(rest,ctx)
+		part.getSub().dispatch(rest, ctx)
 	}
 	return
 }
+
 /*
 func (pr *parsedRoutes) addAction(key string,action *action) {
 	part,ok := pr.dict[key]
@@ -266,7 +277,7 @@ func getUrlPattern(key string) urlPattern {
 	}
 }*/
 
-func getParaAndPattern(key string) (pattern routePartPattern,para string,regex *regexp.Regexp ) {
+func getParaAndPattern(key string) (pattern routePartPattern, para string, regex *regexp.Regexp) {
 	switch key[0] {
 	case ':':
 		para = string(key[1:])
@@ -289,7 +300,7 @@ func getParaAndPattern(key string) (pattern routePartPattern,para string,regex *
 	return
 }
 
-func splitPart(path string) (part,rest string) {
+func splitPart(path string) (part, rest string) {
 	if len(path) != 0 {
 		start := 0
 		if path[0] == '/' {
@@ -301,7 +312,7 @@ func splitPart(path string) (part,rest string) {
 			i++
 		}
 		part = path[start:i]
-		if i < len(path) - 1 {
+		if i < len(path)-1 {
 			rest = path[i:]
 		}
 	}
@@ -326,19 +337,19 @@ func getMethod(ms string) (method HttpMethod) {
 
 //for test
 func (pr *parsedRoutes) print() {
-	log.Println("static len:",len(pr.staticDict))
+	log.Println("static len:", len(pr.staticDict))
 	for key := range pr.staticDict {
-		log.Println("static route:",key)
+		log.Println("static route:", key)
 		rp := pr.staticDict[key]
 		printActionAndSub(rp)
-		log.Println("end of static route:",key)
+		log.Println("end of static route:", key)
 	}
 
-	log.Println("dynamic len:",len(pr.dynamicDict))
-	for typ,p := range pr.dynamicDict {
-		log.Println("dynamic route, type:",typ,",para:",p.para,",regex:",p.regex)
+	log.Println("dynamic len:", len(pr.dynamicDict))
+	for typ, p := range pr.dynamicDict {
+		log.Println("dynamic route, type:", typ, ",para:", p.para, ",regex:", p.regex)
 		printActionAndSub(p)
-		log.Println("end of dynamic route:",p.para)
+		log.Println("end of dynamic route:", p.para)
 	}
 }
 

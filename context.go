@@ -1,16 +1,15 @@
 package fipple
 
 import (
-	"net/http"
-	"fmt"
-	"encoding/json"
-	"log"
 	"compress/gzip"
-	"path/filepath"
-	"mime"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
-	"fiplog"
+	"log"
+	"mime"
+	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 )
 
@@ -19,19 +18,19 @@ const (
 	//errNotFount = "404 page not found"
 	//errMethodNotAllowed = "405 method not allowed"
 	contentType = "Content-Type"
-	typeJson = "application/json; charset=utf-8"
-	typeHtml = "text/html; charset=utf-8"
+	typeJson    = "application/json; charset=utf-8"
+	typeHtml    = "text/html; charset=utf-8"
 )
 
 type RpcRequest struct {
 	path string
-	id int
+	id   int
 	//next *Request
 }
 
 type RpcResponse struct {
 	path string
-	id int
+	id   int
 }
 
 type Encoder interface {
@@ -43,14 +42,14 @@ type Decoder interface {
 }
 
 type Context struct {
-	req *http.Request
-	rw http.ResponseWriter
-	params map[string]interface {}
-	query url.Values
+	req    *http.Request
+	rw     http.ResponseWriter
+	params map[string]interface{}
+	query  url.Values
 }
 
 type Fields struct {
-	m map[string]interface {}
+	m map[string]interface{}
 }
 
 func (f Fields) GetStringField(name string) string {
@@ -79,11 +78,10 @@ func (f Fields) GetIntField(name string) int {
 	}
 }
 
-
 func NewContext(rw http.ResponseWriter, req *http.Request) *Context {
-	fiplog.GetLogger().Debug("receive request, remote addr:",req.RemoteAddr,",request uri:",req.RequestURI)
+	//fiplog.GetLogger().Debug("receive request, remote addr:",req.RemoteAddr,",request uri:",req.RequestURI)
 	//query :=
-	return &Context{req,rw,make(map[string]interface {}),req.URL.Query()}
+	return &Context{req, rw, make(map[string]interface{}), req.URL.Query()}
 }
 
 func (ctx *Context) GetQuery(key string) string {
@@ -95,7 +93,7 @@ func (ctx *Context) GetIntQuery(key string, dflt int) int {
 	if raw == "" {
 		return dflt
 	}
-	i,e := strconv.Atoi(raw)
+	i, e := strconv.Atoi(raw)
 	if e != nil {
 		return dflt
 	} else {
@@ -103,7 +101,7 @@ func (ctx *Context) GetIntQuery(key string, dflt int) int {
 	}
 }
 
-func (ctx *Context) GetParam(key string) interface {} {
+func (ctx *Context) GetParam(key string) interface{} {
 	v, ok := ctx.params[key]
 	if ok {
 		return v
@@ -140,24 +138,24 @@ func (ctx *Context) GetIntParam(key string) (i int) {
 	}
 }
 
-func (ctx *Context) GetEntity(v interface {}) (err error) {
-	body,err := ioutil.ReadAll(ctx.req.Body)
+func (ctx *Context) GetEntity(v interface{}) (err error) {
+	body, err := ioutil.ReadAll(ctx.req.Body)
 	if err != nil {
 		return
 	}
 
-	return json.Unmarshal(body,v)
+	return json.Unmarshal(body, v)
 }
 
 func (ctx *Context) GetFields() (fields *Fields, err error) {
-	body,err := ioutil.ReadAll(ctx.req.Body)
+	body, err := ioutil.ReadAll(ctx.req.Body)
 	if err != nil {
 		return
 	}
 
-	fiplog.GetLogger().Debug("body:",body)
-	var m map[string]interface {}
-	json.Unmarshal(body,&m)
+	//fiplog.GetLogger().Debug("body:",body)
+	var m map[string]interface{}
+	json.Unmarshal(body, &m)
 	fields = &Fields{m}
 	return
 }
@@ -201,12 +199,12 @@ func (ctx *Context) GetPlainReq() (body []byte) {
 	return
 }
 
-func (ctx *Context) GetReqHeader(key string) ( val string) {
+func (ctx *Context) GetReqHeader(key string) (val string) {
 	return ctx.req.Header.Get(key)
 }
 
-func (ctx *Context) SetHeader(key,val string) {
-	ctx.rw.Header().Set(key,val)
+func (ctx *Context) SetHeader(key, val string) {
+	ctx.rw.Header().Set(key, val)
 }
 
 func (ctx *Context) ServeBody(content []byte) {
@@ -214,22 +212,22 @@ func (ctx *Context) ServeBody(content []byte) {
 	ctx.rw.Write(content)
 }
 
-func (ctx *Context) ServeString(o ...interface {}) {
-	fmt.Fprint(ctx.rw,o)
+func (ctx *Context) ServeString(o ...interface{}) {
+	fmt.Fprint(ctx.rw, o)
 }
 
-func (ctx *Context) ServeJson(o interface {}) {
-	bs,err := json.Marshal(o)
+func (ctx *Context) ServeJson(o interface{}) {
+	bs, err := json.Marshal(o)
 	if err != nil {
-		log.Println("marshal json error:",err)
+		log.Println("marshal json error:", err)
 		ctx.InternalError()
 	}
-	ctx.SetHeader(contentType,typeJson)
+	ctx.SetHeader(contentType, typeJson)
 	ctx.rw.Write(bs)
 }
 
 func (ctx *Context) ServeHtml(content []byte) {
-	ctx.SetHeader(contentType, typeHtml )
+	ctx.SetHeader(contentType, typeHtml)
 	ctx.rw.Write(content)
 }
 
@@ -242,17 +240,17 @@ func (ctx *Context) ServeStatic(name string, content []byte) {
 	ctx.rw.Write(content)
 }
 
-func (ctx *Context) ServeByTemplate(templ string,data interface {}) {
-	ctx.SetHeader("Content-Type","text/html; charset=utf-8")
+func (ctx *Context) ServeByTemplate(templ string, data interface{}) {
+	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
 
 	var err error
 	if compress {
-		ctx.SetHeader("Content-Encoding","gzip")
+		ctx.SetHeader("Content-Encoding", "gzip")
 		w := gzip.NewWriter(ctx.rw)
-		err = templates.ExecuteTemplate(w,templ,data)
+		err = templates.ExecuteTemplate(w, templ, data)
 		defer w.Close()
 	} else {
-		err = templates.ExecuteTemplate(ctx.rw,templ,data)
+		err = templates.ExecuteTemplate(ctx.rw, templ, data)
 	}
 	//log.Println("templ:",templ,"data:",data)
 
@@ -293,5 +291,3 @@ func (ctx *Context) Error(status int) {
 	ctx.rw.WriteHeader(status)
 	//fmt.Fprintln(ctx.rw, error)
 }
-
-

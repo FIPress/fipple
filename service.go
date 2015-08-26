@@ -1,18 +1,17 @@
 package fipple
 
 import (
-	"net/http"
 	"log"
+	"net/http"
 )
 
 const (
-	allowOrigin = "Access-Control-Allow-Origin"
-	allowMethods = "Access-Control-Allow-Methods"
-	allowHeaders = "Access-Control-Allow-Headers"
+	allowOrigin    = "Access-Control-Allow-Origin"
+	allowMethods   = "Access-Control-Allow-Methods"
+	allowHeaders   = "Access-Control-Allow-Headers"
 	oringinAllowed = "*"
 	headersAllowed = "Content-Type, X-Token"
 	methodsAllowed = "POST, GET, OPTIONS"
-
 )
 
 type Service struct {
@@ -25,8 +24,8 @@ func NewService() *Service {
 }
 
 func (svc *Service) Start(port string) error {
-	log.Println("http listen:",port)
-	return http.ListenAndServe(port,svc)
+	log.Println("http listen:", port)
+	return http.ListenAndServe(port, svc)
 }
 
 func (svc *Service) AddRoutes(route ...*Route) {
@@ -58,16 +57,13 @@ func (svc *Service) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := NewContext(rw,req)
-	svc.routes.dispatch(req.URL.Path,ctx)
+	ctx := NewContext(rw, req)
+	svc.routes.dispatch(req.URL.Path, ctx)
 }
 
 func originControl(rw http.ResponseWriter) {
 	//todo: config acceptable origin
-	rw.Header().Set(allowOrigin,oringinAllowed)
-	rw.Header().Set(allowMethods,methodsAllowed)
-	rw.Header().Set(allowHeaders,headersAllowed)
+	rw.Header().Set(allowOrigin, oringinAllowed)
+	rw.Header().Set(allowMethods, methodsAllowed)
+	rw.Header().Set(allowHeaders, headersAllowed)
 }
-
-
-

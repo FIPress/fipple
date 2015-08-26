@@ -6,14 +6,12 @@ import "text/template"
 
 import "net/http"
 
-
-import (
-)
+import ()
 
 var (
 	defaultService *Service
-	templates *template.Template
-	compress = true
+	templates      *template.Template
+	compress       = true
 	//todo: other config
 )
 
@@ -37,22 +35,22 @@ func AddRoute(route *Route) {
 }
 
 func Get(path string, action Action) {
-	DefaultService().Get(path,action)
+	DefaultService().Get(path, action)
 }
 
 func Post(path string, action Action) {
-	DefaultService().Post(path,action)
+	DefaultService().Post(path, action)
 }
 
 func ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	DefaultService().ServeHTTP(rw,req)
+	DefaultService().ServeHTTP(rw, req)
 }
 
 func AddTemplGlob(pattern string) {
 	var err error
-	templates,err = template.ParseGlob(pattern)
+	templates, err = template.ParseGlob(pattern)
 	if err != nil {
-		log.Println("parse templates failed,",err)
+		log.Println("parse templates failed,", err)
 	}
 	//templates.ParseFiles("/temps/cover.html")
 }
