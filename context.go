@@ -269,6 +269,14 @@ func (ctx *Context) InternalError() {
 	ctx.Error(http.StatusInternalServerError)
 }
 
+func (ctx *Context) OkOrError(ok bool) {
+	if ok {
+		ctx.Ok()
+	} else {
+		ctx.InternalError()
+	}
+}
+
 func (ctx *Context) BadRequest() {
 	ctx.Error(http.StatusBadRequest)
 }
