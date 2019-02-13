@@ -3,6 +3,7 @@ package fipple
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -35,14 +36,18 @@ func getAll(ctx *Context) {
 }
 
 func getUser(ctx *Context) {
-	log.Println("get user")
-	log.Println("userid:", ctx.GetParam("id"))
+	log.Println("get user,userid:", ctx.GetParam("id"))
+}
+
+func putUser(ctx *Context) {
+	log.Println("put user, user id:", ctx.GetParam("uid"))
 }
 
 func getUserEx(ctx *Context) {
 	log.Println("get userEx")
 	log.Println("userid:", ctx.GetParam("id"))
 	log.Println("user name:", ctx.GetParam("name"))
+	log.Println("user email:", ctx.GetParam("email"))
 }
 
 func addUser(ctx *Context) {
@@ -50,27 +55,39 @@ func addUser(ctx *Context) {
 }
 
 func TestParse(t *testing.T) {
-	routes := []*Route{GetRoute("/", home),
-		GetRoute("/user/:id/", getUser),
-		GetRoute("/user/:id/:name", getUserEx),
+	routes := []*route{GetRoute("/", home),
+		GetRoute("/user/:id", getUser),
+		GetRoute("/user/:id/:name(/:email)", getUserEx), //todo: optional route
 		PostRoute("/user/add", addUser),
+		PutRoute("/user/:uid", putUser),
 	}
 	parsed := parseAll(routes)
-	//parsed.print()
-	fakeReq := &http.Request{Method: "GET"}
+	parsed.print()
+	fakeReq := &http.Request{Method: "GET", URL: &url.URL{}}
 	ctx := NewContext(FakeResponseWriter{}, fakeReq)
 	parsed.dispatch("/", ctx)
+
+	ctx = NewContext(FakeResponseWriter{}, fakeReq)
 	parsed.dispatch("/user/123", ctx)
+
+	ctx = NewContext(FakeResponseWriter{}, fakeReq)
 	parsed.dispatch("/user/23/tom", ctx)
+
+	ctx = NewContext(FakeResponseWriter{}, fakeReq)
+	parsed.dispatch("/user/234/sam/abcd", ctx)
+
+	fakeReq = &http.Request{Method: "PUT", URL: &url.URL{}}
+	ctx = NewContext(FakeResponseWriter{}, fakeReq)
+	parsed.dispatch("/user/123", ctx)
 }
 
 func TestParseSplat(t *testing.T) {
-	routes := []*Route{
+	routes := []*route{
 		GetRoute("/:id/static/*path", getStatic),
 	}
 	parsed := parseAll(routes)
 	//parsed.print()
-	fakeReq := &http.Request{Method: "GET"}
+	fakeReq := &http.Request{Method: "GET", URL: &url.URL{}}
 	ctx := NewContext(FakeResponseWriter{}, fakeReq)
 	parsed.dispatch("/a/static/b/c/d", ctx)
 }
@@ -81,7 +98,7 @@ func getStatic(ctx *Context) {
 }
 
 /*func TestParseCustom(t *testing.T) {
-	routes := []*Route{GetRoute("/",home),
+	routes := []*route{GetRoute("/",home),
 		GetRoute("/page/$lang<>",getUser),
 	}
 	parsed := parseAll(routes)

@@ -1,7 +1,6 @@
 package fipple
 
 import (
-	"log"
 	"net/http"
 )
 
@@ -15,33 +14,51 @@ const (
 )
 
 type Service struct {
-	routes *parsedRoutes
+	//routes *parsedRoutes
+	router Router
 	//req *RpcRequest
 }
 
 func NewService() *Service {
-	return &Service{newParsedRoutes()}
+	return NewServiceWithRouterType(Regex)
+}
+
+func NewServiceWithRouterType(rType RouterType) *Service {
+	r := newRegexRouter()
+	//if rType == Regex {}
+	return &Service{r}
 }
 
 func (svc *Service) Start(port string) error {
-	log.Println("http listen:", port)
+	getLogger().Info("http listen:", port)
 	return http.ListenAndServe(port, svc)
 }
 
-func (svc *Service) AddRoutes(route ...*Route) {
-	svc.routes.addAll(route)
+func (svc *Service) AddRoutes(route ...*route) {
+	//svc.routes.addAll(route)
 }
 
-func (svc *Service) AddRoute(route *Route) {
-	svc.routes.add(route)
+func (svc *Service) AddRoute(route *route) {
+	//svc.routes.add(route)
+	svc.router.addRoute(route)
 }
 
-func (svc *Service) Get(path string, action Action) {
-	svc.routes.add(GetRoute(path, action))
+func (svc *Service) Get(path string, action action) {
+	svc.router.addRoute(GetRoute(path, action))
 }
 
-func (svc *Service) Post(path string, action Action) {
-	svc.routes.add(PostRoute(path, action))
+func (svc *Service) Post(path string, action action) {
+	svc.router.addRoute(PostRoute(path, action))
+}
+
+func (svc *Service) Delete(path string, action action) {
+	getLogger().Debug("add path:", path)
+	svc.router.addRoute(DeleteRoute(path, action))
+}
+
+func (svc *Service) FileServer() {
+	//todo: add file server
+	//http.Handle("/static/",http.StripPrefix("/static/",http.FileServer(http.Dir("./static/"))))
 }
 
 func (svc *Service) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -58,7 +75,7 @@ func (svc *Service) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := NewContext(rw, req)
-	svc.routes.dispatch(req.URL.Path, ctx)
+	svc.router.dispatch(req.URL.Path, ctx)
 }
 
 func originControl(rw http.ResponseWriter) {

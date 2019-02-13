@@ -8,37 +8,55 @@ const (
 	Deflate
 )
 
-type HttpMethod int
+type HttpMethod string
 
 const (
-	NotSupported HttpMethod = iota //not http
-	GET
-	PUT
-	POST
-	DELETE
-	HEAD
+	NotSupported HttpMethod = "" //not http
+	GET          HttpMethod = "GET"
+	PUT          HttpMethod = "PUT"
+	POST         HttpMethod = "POST"
+	DELETE       HttpMethod = "DELETE"
+	HEAD                    = "HEAD"
 )
 
-type Action func(*Context)
+type action func(*Context)
 
-type Route struct {
+type route struct {
 	path string
 	//	encoding Encoding
 	httpMethod HttpMethod
-	action     Action
+	action     action
+	paras      []string //named parameters
+}
+
+func (r *route) addPara(para string) {
+	if r.paras == nil {
+		r.paras = make([]string, 1)
+		r.paras[0] = para
+	} else {
+		r.paras = append(r.paras, para)
+	}
 }
 
 /*
-func Rpc(name string, execFunc func()) *Route {
-	return &Route{name,Gob,None,execFunc}
+func Rpc(name string, execFunc func()) *route {
+	return &route{name,Gob,None,execFunc}
 }*/
 
-func GetRoute(path string, action Action) *Route {
-	return &Route{path, GET, action}
+func GetRoute(path string, action action) *route {
+	return &route{path, GET, action, nil}
 }
 
-func PostRoute(path string, action Action) *Route {
-	return &Route{path, POST, action}
+func PostRoute(path string, action action) *route {
+	return &route{path, POST, action, nil}
+}
+
+func PutRoute(path string, action action) *route {
+	return &route{path, PUT, action, nil}
+}
+
+func DeleteRoute(path string, action action) *route {
+	return &route{path, DELETE, action, nil}
 }
 
 /*

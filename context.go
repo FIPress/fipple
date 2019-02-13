@@ -4,13 +4,16 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"github.com/fipress/fiplog"
+	"io"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
+	"text/template"
 )
 
 const (
@@ -20,6 +23,7 @@ const (
 	contentType = "Content-Type"
 	typeJson    = "application/json; charset=utf-8"
 	typeHtml    = "text/html; charset=utf-8"
+	typeXML     = "text/xml; charset=utf-8"
 )
 
 type RpcRequest struct {
@@ -42,14 +46,23 @@ type Decoder interface {
 }
 
 type Context struct {
-	req    *http.Request
-	rw     http.ResponseWriter
-	params map[string]interface{}
-	query  url.Values
+	req        *http.Request
+	rw         http.ResponseWriter
+	params     map[string]interface{}
+	query      url.Values
+	paramArray []string //intermediary
 }
 
 type Fields struct {
 	m map[string]interface{}
+}
+
+func (ctx *Context) Request() *http.Request {
+	return ctx.req
+}
+
+func (ctx *Context) ResponseWriter() http.ResponseWriter {
+	return ctx.rw
 }
 
 func (f Fields) GetStringField(name string) string {
@@ -79,9 +92,9 @@ func (f Fields) GetIntField(name string) int {
 }
 
 func NewContext(rw http.ResponseWriter, req *http.Request) *Context {
-	//fiplog.GetLogger().Debug("receive request, remote addr:",req.RemoteAddr,",request uri:",req.RequestURI)
+	getLogger().Debug("receive request, remote addr:", req.RemoteAddr, ",request uri:", req.RequestURI)
 	//query :=
-	return &Context{req, rw, make(map[string]interface{}), req.URL.Query()}
+	return &Context{req, rw, make(map[string]interface{}), req.URL.Query(), nil}
 }
 
 func (ctx *Context) GetQuery(key string) string {
@@ -126,15 +139,33 @@ func (ctx *Context) GetStringParam(key string) (s string) {
 
 func (ctx *Context) GetIntParam(key string) (i int) {
 	v, ok := ctx.params[key]
+
 	if ok {
 		switch val := v.(type) {
 		case int:
 			return val
+		case string:
+			i, _ = strconv.Atoi(val)
+			return
 		default:
 			return
 		}
 	} else {
 		return
+	}
+}
+
+func (ctx *Context) GetIntParamWithDefault(key string, defaultVal int) int {
+	v, ok := ctx.params[key]
+	if ok {
+		switch val := v.(type) {
+		case int:
+			return val
+		default:
+			return defaultVal
+		}
+	} else {
+		return defaultVal
 	}
 }
 
@@ -153,7 +184,8 @@ func (ctx *Context) GetFields() (fields *Fields, err error) {
 		return
 	}
 
-	//fiplog.GetLogger().Debug("body:",body)
+	fiplog.GetLogger().Debug("body:", body)
+	fiplog.GetLogger().Debug("body string:", string(body))
 	var m map[string]interface{}
 	json.Unmarshal(body, &m)
 	fields = &Fields{m}
@@ -213,13 +245,15 @@ func (ctx *Context) ServeBody(content []byte) {
 }
 
 func (ctx *Context) ServeString(o ...interface{}) {
-	fmt.Fprint(ctx.rw, o)
+	//fmt.Fprint(ctx.rw, o)
+	s := fmt.Sprint(o...)
+	ctx.rw.Write([]byte(s))
 }
 
 func (ctx *Context) ServeJson(o interface{}) {
 	bs, err := json.Marshal(o)
 	if err != nil {
-		log.Println("marshal json error:", err)
+		getLogger().Error("marshal json error:", err)
 		ctx.InternalError()
 	}
 	ctx.SetHeader(contentType, typeJson)
@@ -228,6 +262,11 @@ func (ctx *Context) ServeJson(o interface{}) {
 
 func (ctx *Context) ServeHtml(content []byte) {
 	ctx.SetHeader(contentType, typeHtml)
+	ctx.rw.Write(content)
+}
+
+func (ctx *Context) ServeXML(content []byte) {
+	ctx.SetHeader(contentType, typeXML)
 	ctx.rw.Write(content)
 }
 
@@ -240,33 +279,60 @@ func (ctx *Context) ServeStatic(name string, content []byte) {
 	ctx.rw.Write(content)
 }
 
-func (ctx *Context) ServeByTemplate(templ string, data interface{}) {
-	ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
+func (ctx *Context) ServeHtmlFile(path string) {
+	ctx.writeFile(path, typeHtml)
+}
+
+func (ctx *Context) ServeFile(path string) {
+	ctype := mime.TypeByExtension(filepath.Ext(path))
+	if ctype == "" {
+		ctype = typeHtml
+	}
+	ctx.writeFile(path, ctype)
+}
+
+func (ctx *Context) writeFile(path, fileType string) {
+	ctx.SetHeader(contentType, fileType)
+	f, err := os.Open(path)
+	if err != nil {
+		ctx.ServeStatus(http.StatusNotFound)
+		return
+	}
+	io.Copy(ctx.rw, f)
+}
+
+func (ctx *Context) ServeByTemplate(templ *template.Template, data interface{}) {
+	ctx.SetHeader(contentType, typeHtml)
 
 	var err error
 	if compress {
 		ctx.SetHeader("Content-Encoding", "gzip")
 		w := gzip.NewWriter(ctx.rw)
-		err = templates.ExecuteTemplate(w, templ, data)
+		err = templ.Execute(w, data) // templates.ExecuteTemplate(w, templ, data)
 		defer w.Close()
 	} else {
-		err = templates.ExecuteTemplate(ctx.rw, templ, data)
+		//err = templates.ExecuteTemplate(ctx.rw, templ, data)
+		err = templ.Execute(ctx.rw, data)
 	}
 	//log.Println("templ:",templ,"data:",data)
 
 	if err != nil {
 		//http.Error(ctx.rw, err.Error(), http.StatusInternalServerError)
 		ctx.InternalError()
-		log.Println(ctx.req, "Error sending response", err)
+		getLogger().Error(ctx.req, "Error sending response", err)
 	}
 }
 
+func (ctx *Context) ServeStatus(code int) {
+	ctx.rw.WriteHeader(code)
+}
+
 func (ctx *Context) Ok() {
-	ctx.rw.WriteHeader(http.StatusOK)
+	ctx.ServeStatus(http.StatusOK)
 }
 
 func (ctx *Context) InternalError() {
-	ctx.Error(http.StatusInternalServerError)
+	ctx.ServeStatus(http.StatusInternalServerError)
 }
 
 func (ctx *Context) OkOrError(ok bool) {
@@ -278,24 +344,42 @@ func (ctx *Context) OkOrError(ok bool) {
 }
 
 func (ctx *Context) BadRequest() {
-	ctx.Error(http.StatusBadRequest)
+	ctx.ServeStatus(http.StatusBadRequest)
 }
 
 func (ctx *Context) Unauthorized() {
-	ctx.Error(http.StatusUnauthorized)
+	ctx.ServeStatus(http.StatusUnauthorized)
 }
 
 func (ctx *Context) PageNotFound() {
 	//if no custom handler
-	ctx.Error(http.StatusNotFound)
+	ctx.ServeStatus(http.StatusNotFound)
+}
+
+func (ctx *Context) Conflict() {
+	ctx.ServeStatus(http.StatusConflict)
 }
 
 func (ctx *Context) MethodNotAllowed() {
-	ctx.Error(http.StatusMethodNotAllowed)
+	ctx.ServeStatus(http.StatusMethodNotAllowed)
 }
 
-func (ctx *Context) Error(status int) {
-	//ctx.rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	ctx.rw.WriteHeader(status)
-	//fmt.Fprintln(ctx.rw, error)
+func (ctx *Context) addParam(p string) {
+	if ctx.paramArray == nil {
+		ctx.paramArray = make([]string, 1)
+		ctx.paramArray[0] = p
+	} else {
+		ctx.paramArray = append(ctx.paramArray, p)
+	}
+}
+
+func (ctx *Context) buildNamedParams(names []string) {
+	l := len(ctx.paramArray)
+	if l != len(names) {
+		ctx.PageNotFound()
+		return
+	}
+	for i := 0; i < l; i++ {
+		ctx.params[names[i]] = ctx.paramArray[i]
+	}
 }

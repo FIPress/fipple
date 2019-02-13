@@ -24,45 +24,51 @@ const (
 	//todo: optional
 )
 
+/*
+
 type routeAction struct {
 	//encode Encode
 	httpMethod HttpMethod
-	action     Action
+	action     action
 }
 
-func newAction(route *Route) *routeAction {
+func newAction(route *route) *routeAction {
 	return &routeAction{route.httpMethod, route.action}
 }
+*/
 
 type routePart interface {
 	isNil() bool
-	setAction(*routeAction)
-	getAction() *routeAction
+	getAction() action
+	getParamNames() []string
 	getOrNewSub() *parsedRoutes
 	getSub() *parsedRoutes
 }
 
 type dynamicPart struct {
 	*staticPart
-	para string
+	//para string
 	//typ  routePartPattern
 	regex *regexp.Regexp
 }
 
 type staticPart struct {
-	action *routeAction
-	sub    *parsedRoutes
+	action     action
+	paramNames []string
+	//action action
+	//httpMethod HttpMethod
+	sub *parsedRoutes
 }
 
 func (sp *staticPart) isNil() bool {
 	return sp == nil
 }
 
-func (sp *staticPart) setAction(a *routeAction) {
+/*func (sp *staticPart) setAction(a action) {
 	if sp != nil {
 		sp.action = a
 	}
-}
+}*/
 
 func (sp *staticPart) getOrNewSub() *parsedRoutes {
 	if sp == nil {
@@ -75,11 +81,18 @@ func (sp *staticPart) getOrNewSub() *parsedRoutes {
 	return sp.sub
 }
 
-func (sp *staticPart) getAction() *routeAction {
+func (sp *staticPart) getAction() action {
 	if sp == nil {
 		return nil
 	}
 	return sp.action
+}
+
+func (sp *staticPart) getParamNames() []string {
+	if sp == nil {
+		return nil
+	}
+	return sp.paramNames
 }
 
 func (sp *staticPart) getSub() *parsedRoutes {
@@ -114,68 +127,68 @@ func newParsedRoutes() *parsedRoutes {
 	return &parsedRoutes{make(map[string]*staticPart), make(map[routePartPattern]*dynamicPart)}
 }
 
-func (pr *parsedRoutes) getPart(key string) routePart {
+func (pr *parsedRoutes) getPart(key string) (routePart, string) {
 	pattern, para, regex := getParaAndPattern(key)
 	if pattern == static {
 		part := pr.staticDict[key]
 		if part == nil {
-			part = &staticPart{nil, nil}
+			part = &staticPart{}
 			pr.staticDict[key] = part
 		}
-		return part
+		return part, para
 	} else {
 		part := pr.dynamicDict[pattern]
 		if part == nil {
-			s := &staticPart{nil, nil}
-			part = &dynamicPart{s, para, regex}
+			s := new(staticPart)
+			part = &dynamicPart{s, regex}
 			pr.dynamicDict[pattern] = part
 		}
-		return part
+		return part, para
 	}
 }
 
-func (pr *parsedRoutes) add(route *Route) {
+func (pr *parsedRoutes) add(route *route) {
 	if pr == nil {
 		return
 	}
-	parse(route.path, newAction(route), pr)
+	parse(route, pr)
 }
 
-func (pr *parsedRoutes) addAll(routeList []*Route) {
+func (pr *parsedRoutes) addAll(routeList []*route) {
 	if pr == nil {
 		return
 	}
 	for _, route := range routeList {
-		parse(route.path, newAction(route), pr)
+		parse(route, pr)
 	}
 }
 
-func parseAll(routeList []*Route) *parsedRoutes {
+func parseAll(routeList []*route) *parsedRoutes {
 	parsed := newParsedRoutes()
 	for _, route := range routeList {
-		action := newAction(route)
-		parse(route.path, action, parsed)
+		parse(route, parsed)
 	}
 	return parsed
 }
 
-func parse(path string, action *routeAction, parsed *parsedRoutes) {
-	key, rest := splitPart(path)
-	part := parsed.getPart(key)
+func parse(route *route, parsed *parsedRoutes) {
+	key, rest := splitPart(route.path)
+	getLogger().Info("key:", key, "rest:", rest)
+	part, para := parsed.getPart(key)
+	if para != "" {
+		route.addPara(para)
+	}
+	sub := part.getOrNewSub()
 	if len(rest) == 0 {
-		//log.Println("before set action,parsed.static:",parsed.staticDict,"parsed.dynamic",parsed.dynamicDict)
-		part.setAction(action)
-		//parsed.addAction(key,action)
-		//log.Println("after set action,parsed.static:",parsed.staticDict,"parsed.dynamic",parsed.dynamicDict)
+		sub.staticDict[string(route.httpMethod)] = &staticPart{route.action, route.paras, nil}
 	} else {
-		sub := part.getOrNewSub()
-		parse(rest, action, sub)
-		//log.Println("len of sub static:",len(sub.staticDict),"len of sub dynamic",len(sub.dynamicDict))
+		route.path = rest
+		parse(route, sub)
 	}
 }
 
 func (pr *parsedRoutes) dispatch(url string, ctx *Context) {
-	//log.Println("dispatch...")
+	getLogger().Debug("dispatch, url", url)
 	var part routePart
 	key, rest := splitPart(url)
 	part = pr.staticDict[key]
@@ -184,12 +197,14 @@ func (pr *parsedRoutes) dispatch(url string, ctx *Context) {
 		for typ, d := range pr.dynamicDict {
 			switch typ {
 			case param:
-				//log.Println("param part:",d.para,",val:",key)
-				ctx.params[d.para] = key
+				//getLogger().Debug("param part:",d.para,",val:",key)
+				//ctx.params[d.para] = key
+				ctx.addParam(key)
 				part = d
 			case splat:
 				//log.Println("splat part:",d.para,"val:",url)
-				ctx.params[d.para] = url
+				//ctx.params[d.para] = url
+				ctx.addParam(key)
 				part = d
 				rest = ""
 			case discard:
@@ -207,21 +222,25 @@ func (pr *parsedRoutes) dispatch(url string, ctx *Context) {
 	}
 
 	if len(rest) == 0 {
-		//log.Println("part:",part)
-		ra := part.getAction()
-		//log.Println("get action:",ra)
-		if ra != nil {
-			if getMethod(ctx.req.Method) != ra.httpMethod {
-				log.Println("req.Method:", ctx.req.Method, ",ra.httpMethod:", ra.httpMethod, ",ra:", ra)
-				ctx.MethodNotAllowed()
-			} else {
-				//log.Println("execute action:")
-				ra.action(ctx)
-			}
-		} else {
-			log.Println("404 - action not found")
+		getLogger().Debug("rest:", rest)
+
+		sub := part.getSub()
+		if sub == nil || len(sub.staticDict) == 0 {
+			getLogger().Error("404 - action not found")
 			ctx.PageNotFound()
+			return
 		}
+
+		part = sub.staticDict[ctx.req.Method]
+		action := part.getAction()
+
+		if part == nil || action == nil {
+			getLogger().Debug("req.Method:", ctx.req.Method, "not allowed")
+			ctx.MethodNotAllowed()
+			return
+		}
+		ctx.buildNamedParams(part.getParamNames())
+		action(ctx)
 	} else {
 		part.getSub().dispatch(rest, ctx)
 	}
@@ -323,17 +342,21 @@ func splitPart(path string) (part, rest string) {
 	return
 }
 
-func getMethod(ms string) (method HttpMethod) {
+/*func getMethod(ms string) (method HttpMethod) {
 	switch ms {
 	case "GET":
 		method = GET
 	case "POST":
 		method = POST
+	case "PUT":
+		method = PUT
+	case "DELETE":
+		method = DELETE
 	default:
 		method = NotSupported
 	}
 	return
-}
+}*/
 
 //for test
 func (pr *parsedRoutes) print() {
@@ -347,17 +370,21 @@ func (pr *parsedRoutes) print() {
 
 	log.Println("dynamic len:", len(pr.dynamicDict))
 	for typ, p := range pr.dynamicDict {
-		log.Println("dynamic route, type:", typ, ",para:", p.para, ",regex:", p.regex)
+		log.Println("dynamic route, type:", typ, ",regex:", p.regex)
 		printActionAndSub(p)
-		log.Println("end of dynamic route:", p.para)
+		log.Println("end of dynamic route:", typ)
 	}
+
 }
 
 func printActionAndSub(part routePart) {
 	if part.getAction() != nil {
-		log.Println("Action:", part.getAction())
+		log.Println("action:", part.getAction())
 	}
 	if part.getSub() != nil {
 		part.getSub().print()
+	}
+	if part.getParamNames() != nil {
+		log.Println(part.getParamNames())
 	}
 }
