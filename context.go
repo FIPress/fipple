@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/template"
 )
 
@@ -190,6 +191,82 @@ func (ctx *Context) GetFields() (fields *Fields, err error) {
 	json.Unmarshal(body, &m)
 	fields = &Fields{m}
 	return
+}
+
+type UploadedFile struct {
+	Name  string
+	Type  string
+	Bytes []byte
+}
+
+//const DefaultMaxUploadSize = 1024*1024
+var MaxUploadSize int64 = 1024 * 1024
+var SupportedUploadFileTypes = []string{"jpg", "jpeg", "gif", "png"}
+
+//var UploadPath = "."
+func (ctx *Context) GetUploadedFile() *UploadedFile {
+	ctx.req.Body = http.MaxBytesReader(ctx.rw, ctx.req.Body, MaxUploadSize)
+	if err := ctx.req.ParseMultipartForm(MaxUploadSize); err != nil {
+		logger.Error("Parse multipart form error:", err)
+		ctx.BadRequest()
+		return nil
+	}
+
+	// parse and validate file and post parameters
+	//fileType := ctx.req.PostFormValue("type")
+	file, header, err := ctx.req.FormFile("file")
+	if err != nil {
+		logger.Error("get upload file error:", err)
+		ctx.BadRequest()
+		return nil
+	}
+	defer file.Close()
+
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		logger.Error("read file error:", err)
+		ctx.BadRequest()
+		return nil
+	}
+
+	// check file type, detectcontenttype only needs the first 512 bytes
+	fileType := http.DetectContentType(bytes)
+	supported := false
+	for _, t := range SupportedUploadFileTypes {
+		if strings.Contains(fileType, t) {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		ctx.BadRequest()
+		return nil
+	}
+
+	/*ext, err := mime.ExtensionsByType(fileType)
+	if err != nil {
+		//renderError(w, "CANT_READ_FILE_TYPE", http.StatusInternalServerError)
+		ctx.InternalError()
+		return nil
+	}*/
+	//fullName := filepath.Join(UploadPath, name+ext[0])
+	//fmt.Printf("FileType: %s, File: %s\n", fileType, newPath)
+	logger.Debug("upload file, name", header.Filename, ",file type:", fileType)
+	return &UploadedFile{Name: header.Filename, Type: fileType, Bytes: bytes}
+	// write file
+	/*fileToSave, err := os.Create(fullName)
+	if err != nil {
+		//renderError(w, "CANT_WRITE_FILE", http.StatusInternalServerError)
+		ctx.InternalError()
+		return
+	}
+	defer fileToSave.Close() // idempotent, okay to call twice
+	if _, err := fileToSave.Write(fileBytes); err != nil  {
+		//renderError(w, "CANT_WRITE_FILE", http.StatusInternalServerError)
+		ctx.InternalError()
+		return
+	}
+	ctx.Ok()*/
 }
 
 /*func (ctx *Context) GetStringField(name string) (s string) {
